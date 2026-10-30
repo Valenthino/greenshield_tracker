@@ -1,0 +1,32 @@
+export interface Lead {
+  id: string;
+  company: string;
+  organizationType: string;
+  geography: string;
+  fit: string;
+  website: string;
+  contactName: string;
+  contactEmail: string;
+  plannedChannel: string;
+  sources: string[];
+  sourceNotes: string;
+  emailSubject: string;
+  emailBody: string;
+  followUpDraft: string;
+  approval: string;
+  approvedBy: string;
+  approvedAt: string;
+  stage: string;
+  sender: string;
+  sentAt: string;
+  replyAt: string;
+  replySummary: string;
+  threadUrl: string;
+  nextFollowUp: string;
+  nextAction: string;
+  sampleStatus: string;
+  requirements: string;
+  notes: string;
+  complianceGate: string;
+  updatedAt: string;
+}
