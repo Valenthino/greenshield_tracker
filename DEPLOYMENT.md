@@ -23,7 +23,7 @@ After secure login is configured, import the separate private prospect file thro
 1. Confirm the selected app is Green Shield only, domain and TLS valid, runtime secrets set, persistent mount present, and replacement policy does not overlap writers.
 2. Open HTTPS URL without a session. It must show sign-in only; `/api/records/` and `/api/backup/` must deny access.
 3. Sign in with securely provisioned password. The new repository starts empty; after the authorized private import, confirm ten unreviewed, unsent records and consent review gate.
-4. Create a clearly labeled test record, save, reload. Stop and restart the app without replacing its volume; confirm the edit survives, then remove that test record.
+4. Create a clearly labeled test record, save, reload. Stop and restart the app without replacing its volume; confirm the edit survives. Keep the test record clearly labeled; delete it only if separately authorized.
 5. Confirm cookie is HttpOnly, Secure and SameSite Strict; log out and confirm protected API access is denied again.
 6. Export records backup and verify a safe restore process before storing important operational data.
 
