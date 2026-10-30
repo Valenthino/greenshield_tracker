@@ -1,0 +1,14 @@
+node_modules/
+.next/
+out/
+*.tsbuildinfo
+.env*
+!.env.example
+.DS_Store
+
+/data/
+
+# Never commit private research imports or backups
+*prospect*.json
+*backup*.json
+private/
