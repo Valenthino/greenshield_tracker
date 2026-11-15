@@ -1,6 +1,9 @@
-# Green Shield · Outreach workspace
+# BAOORE AgriTrade · Outreach workspace
 
-Portable, server-backed Next.js CRM for a small, private outreach workflow. This app is separate from the Green Shield marketing website. It is not a static export and needs a persistent Node.js server.
+Portable, server-backed Next.js CRM for a small, private outreach workflow. This app is separate from the BAOORE AgriTrade marketing website. It is not a static export and needs a persistent Node.js server.
+
+## Name history
+This CRM was first built as **Green Shield** and was rebranded to **BAOORE AgriTrade** in November 2026. Some internal identifiers keep the old name on purpose so existing data, sessions and the deployment keep working: the datastore format id `green-shield-crm-v1`, the session cookie `gs_crm_session`, the repository name, and the current domain `greenshield.vavqo.com`. Changing any of these needs a planned migration.
 
 ## What works
 - Password sign-in; server-side sessions; protected records and backup APIs.
