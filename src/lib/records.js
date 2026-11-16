@@ -1,3 +1,4 @@
+// Stored format id kept from the Green Shield name so existing /app/data files keep loading. Do not rename.
 export const storageKey = "green-shield-crm-v1";
 export const stages = [
   "Draft",
@@ -91,7 +92,7 @@ export function validDate(value) {
 /** @param {unknown} input @returns {import('./types').Lead[]} */
 export function parseBackup(input) {
   if (!input || typeof input !== "object" || Array.isArray(input))
-    throw new Error("Choose a Green Shield CRM JSON backup.");
+    throw new Error("Choose a BAOORE AgriTrade CRM JSON backup.");
   const envelope = /** @type {Record<string,unknown>} */ (input);
   if (envelope.schemaVersion !== 1 || !Array.isArray(envelope.records))
     throw new Error(

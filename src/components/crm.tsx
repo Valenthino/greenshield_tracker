@@ -66,7 +66,7 @@ function Brand() {
         <path d="M17 5C-1 15 0 32 17 39C34 32 35 15 17 5Zm0 1v32M17 7C6 17 6 29 17 37M17 7c11 10 11 22 0 30M17 5c0-2 1-3 4-4" />
       </svg>
       <span>
-        <strong>Green Shield</strong>
+        <strong>BAOORE AgriTrade</strong>
         <small>OUTREACH WORKSPACE</small>
       </span>
     </div>
@@ -422,7 +422,7 @@ export default function Crm() {
     try {
       const data = await api("/api/backup/");
       download(
-        `green-shield-crm-${today()}.json`,
+        `baoore-agritrade-crm-${today()}.json`,
         JSON.stringify(data, null, 2),
         "application/json",
       );
@@ -639,7 +639,7 @@ export default function Crm() {
         </div>
         <header className="workspace-heading">
           <div>
-            <p className="eyebrow">GREEN SHIELD / RELATIONSHIPS</p>
+            <p className="eyebrow">BAOORE AGRITRADE / RELATIONSHIPS</p>
             <h1>
               {view === "all"
                 ? "The next conversation."
@@ -864,7 +864,7 @@ export default function Crm() {
           </div>
         </section>
         <footer className="workspace-footer">
-          <span>Green Shield · Internal outreach workspace</span>
+          <span>BAOORE AgriTrade · Internal outreach workspace</span>
           <button onClick={() => dataDialog.current?.showModal()}>
             About data & access
             <Icon name="arrow" />
@@ -1430,7 +1430,7 @@ export default function Crm() {
             className="button outline"
             onClick={() => {
               download(
-                `green-shield-summary-${today()}.csv`,
+                `baoore-agritrade-summary-${today()}.csv`,
                 summaryCsv(records),
                 "text/csv",
               );

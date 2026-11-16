@@ -1,7 +1,7 @@
 import type { Metadata, Viewport } from "next";
 import "./globals.css";
 export const metadata: Metadata = {
-  title: "Green Shield | Outreach workspace",
+  title: "BAOORE AgriTrade | Outreach workspace",
   description:
     "Local-only, editable outreach CRM prototype. No sending or synchronization.",
   robots: { index: false, follow: false },

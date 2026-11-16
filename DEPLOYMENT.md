@@ -1,9 +1,9 @@
 # Protected preview deployment contract
 
-Target requested: a separate Green Shield project / preview environment in Coolify Root Team. This is not approval to change unrelated applications or choose production hosting. Marketing-site deployment remains separate.
+Target requested: a separate BAOORE AgriTrade (formerly Green Shield) project / preview environment in Coolify Root Team. This is not approval to change unrelated applications or choose production hosting. Marketing-site deployment remains separate.
 
 ## Build and runtime
-- Standard source build: `docker build -t green-shield-crm .`
+- Standard source build: `docker build -t baoore-agritrade-crm .`
 - Build command in Dockerfile: `npm ci && npm run build`.
 - Start command: `npm run start:container` → `next start --hostname 0.0.0.0 --port 3000`.
 - Internal HTTP port: **3000**; TLS terminates at the trusted reverse proxy.
@@ -20,7 +20,7 @@ Publish this sanitized source only to the newly authorized repository (public sa
 After secure login is configured, import the separate private prospect file through the authenticated workspace. Its ten records are unreviewed and unsent. Never bake that private import into a public image or repository.
 
 ## Required checks before declaring preview ready
-1. Confirm the selected app is Green Shield only, domain and TLS valid, runtime secrets set, persistent mount present, and replacement policy does not overlap writers.
+1. Confirm the selected app is the BAOORE AgriTrade CRM only, domain and TLS valid, runtime secrets set, persistent mount present, and replacement policy does not overlap writers.
 2. Open HTTPS URL without a session. It must show sign-in only; `/api/records/` and `/api/backup/` must deny access.
 3. Sign in with securely provisioned password. The new repository starts empty; after the authorized private import, confirm ten unreviewed, unsent records and consent review gate.
 4. Create a clearly labeled test record, save, reload. Stop and restart the app without replacing its volume; confirm the edit survives. Keep the test record clearly labeled; delete it only if separately authorized.
