@@ -42,7 +42,7 @@ Use the included Dockerfile from the new GitHub repository (public source permit
 | --- | --- |
 | `CRM_PASSWORD_HASH` | Secret salted scrypt hash: 32 lowercase hex salt, colon, 128 lowercase hex hash. Generate with setup, then transfer securely. |
 | `CRM_DATABASE_PATH` | `/app/data/crm.json` |
-| `CRM_PUBLIC_ORIGIN` | Exact external HTTPS origin, e.g. `https://greenshield.vavqo.com` |
+| `CRM_PUBLIC_ORIGIN` | Exact external HTTPS origin, e.g. `https://crm.baooreagritrade.com`. Several addresses: comma-separated, e.g. `https://crm.baooreagritrade.com,https://greenshield.vavqo.com` |
 | `CRM_COOKIE_SECURE` | `true` |
 
 Run **exactly one Node process and one container**, with **stop-before-start / recreate**, never overlapping old and new instances. Mount persistent storage at `/app/data`, writable by UID/GID 1000. This JSON store does not coordinate multiple processes or replicas. For concurrent workers, multiple replicas, stronger reporting, or materially larger usage, migrate to a transactional database.

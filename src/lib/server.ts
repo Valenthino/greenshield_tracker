@@ -64,9 +64,17 @@ export function guard(request: Request) {
     return response({ error: "Sign in to access this workspace." }, 401);
   return null;
 }
+/** Origins allowed to send changes: CRM_PUBLIC_ORIGIN, comma-separated when the workspace has several addresses. */
+export function allowedOrigins(request: Request) {
+  const configured = (process.env.CRM_PUBLIC_ORIGIN || "")
+    .split(",")
+    .map((origin) => origin.trim().replace(/\/+$/, ""))
+    .filter(Boolean);
+  return configured.length ? configured : [new URL(request.url).origin];
+}
 export function originGuard(request: Request) {
-  const expected = process.env.CRM_PUBLIC_ORIGIN || new URL(request.url).origin;
-  if (request.headers.get("origin") !== expected)
+  const origin = request.headers.get("origin");
+  if (!origin || !allowedOrigins(request).includes(origin))
     return response(
       { error: "Request origin did not match this workspace." },
       403,
