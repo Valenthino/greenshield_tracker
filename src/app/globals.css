@@ -1179,7 +1179,7 @@ tbody tr:hover {
     position: static;
     height: auto;
     display: grid;
-    grid-template-columns: 1fr auto;
+    grid-template-columns: minmax(0, 1fr) auto;
     padding: 19px 24px 0;
   }
   .sidebar .brand strong {
@@ -1197,6 +1197,8 @@ tbody tr:hover {
     grid-column: 1/-1;
     display: flex;
     justify-content: space-between;
+    flex-wrap: wrap;
+    min-width: 0;
     gap: 7px;
     margin-top: 19px;
   }
@@ -1398,10 +1400,21 @@ tbody tr:hover {
     height: 11px;
   }
   .filters {
+    /* Keep native select widths from expanding the page on narrow screens. */
+    display: grid;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
     padding: 0 15px 17px;
     gap: 8px;
   }
+  .filters > label {
+    min-width: 0;
+  }
+  .filters > .search-field {
+    grid-column: 1 / -1;
+  }
   .filters select {
+    width: 100%;
+    max-width: none;
     font-size: 9px;
   }
   .list-footnote {
