@@ -7,7 +7,10 @@ This CRM was first built as **Green Shield** and was rebranded to **BAOORE AgriT
 
 ## What works
 - Password sign-in; server-side sessions; protected records and backup APIs.
-- Editable companies, organization types, contacts, source URLs and fit notes.
+- Editable companies, organization types, main product (cocoa, cashew, coffee), contacts with email and phone/WhatsApp, source URLs and fit notes.
+- English and French (switch on every screen; the French lives in `src/lib/i18n.ts`, and `tests/i18n.test.mjs` fails on a missing translation).
+- The list opens in work order: overdue follow-ups first, then today's, then by date. On a phone each company is a card.
+- Drafts open in the email program or WhatsApp with the text filled in (nothing is sent by the app itself).
 - Draft subject, body and follow-up; review status, approver and review date.
 - Manual sent/reply/stage/follow-up/sample/requirements records.
 - JSON backup export; CSV summary export; import **new IDs only**, without overwriting edits.

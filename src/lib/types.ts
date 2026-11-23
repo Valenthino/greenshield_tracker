@@ -7,6 +7,8 @@ export interface Lead {
   website: string;
   contactName: string;
   contactEmail: string;
+  contactPhone: string;
+  commodity: string;
   plannedChannel: string;
   sources: string[];
   sourceNotes: string;

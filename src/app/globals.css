@@ -1557,3 +1557,159 @@ tbody tr:hover {
     transition: none !important;
   }
 }
+
+/* 2026-11-23: language switch, send buttons, readable phone sizes and phone cards. */
+.lang-switch {
+  display: inline-flex;
+  border: 1px solid var(--line);
+}
+.lang-switch button {
+  min-width: 44px;
+  min-height: 44px;
+  border: 0;
+  background: transparent;
+  font-weight: 700;
+  font-size: 13px;
+  cursor: pointer;
+}
+.lang-switch button[aria-pressed="true"] {
+  background: var(--green);
+  color: var(--white);
+}
+.login-brand {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px;
+}
+.workspace-top {
+  justify-content: flex-end;
+  gap: 12px;
+}
+.workspace-top > button {
+  min-width: 44px;
+  min-height: 44px;
+}
+.button.whatsapp {
+  background: #1f6b42;
+  color: #fff;
+  border-color: #1f6b42;
+}
+.button.whatsapp:hover {
+  background: #185836;
+}
+.draft-actions {
+  flex-wrap: wrap;
+  gap: 10px;
+}
+.draft-actions .button {
+  min-height: 48px;
+  text-decoration: none;
+}
+@media (max-width: 800px) {
+  .sidebar nav button {
+    min-height: 44px;
+    font-size: 13px;
+    padding: 10px 12px;
+  }
+  .sidebar nav button span {
+    display: inline;
+  }
+  .sidebar-bottom .sidebar-link {
+    min-height: 44px;
+    font-size: 13px;
+    padding: 8px;
+  }
+  .workspace-heading h1 {
+    font-size: 32px;
+  }
+  .metrics span {
+    font-size: 12px;
+  }
+  .metrics small {
+    font-size: 12px;
+  }
+  .metrics strong {
+    font-size: 32px;
+  }
+  /* The list becomes one card per company: no sideways scrolling. */
+  .table-scroll {
+    overflow: visible;
+  }
+  .record-table {
+    min-width: 0;
+    width: 100%;
+  }
+  .record-table thead {
+    display: none;
+  }
+  .record-table tbody,
+  .record-table tr,
+  .record-table td {
+    display: block;
+  }
+  .record-table tr {
+    position: relative;
+    padding: 16px 52px 16px 20px;
+    border-bottom: 1px solid var(--line);
+  }
+  .record-table td {
+    padding: 0;
+    border: 0;
+  }
+  .record-table .cell-type,
+  .record-table .cell-date {
+    margin-top: 6px;
+    font-size: 13px;
+  }
+  .record-table .cell-stage,
+  .record-table .cell-approval {
+    display: inline-block;
+    margin: 8px 8px 0 0;
+  }
+  .record-table .cell-arrow {
+    position: absolute;
+    right: 16px;
+    top: 50%;
+    transform: translateY(-50%);
+  }
+  .record-table .company-button strong {
+    font-size: 17px;
+  }
+  .record-table .company-button span {
+    font-size: 13px;
+  }
+  .filters select,
+  .filters input {
+    min-height: 44px;
+    font-size: 16px;
+  }
+  .panel-tabs button {
+    min-height: 44px;
+    font-size: 13px;
+  }
+  .field input,
+  .field select,
+  .field textarea {
+    font-size: 16px;
+  }
+}
+.filters {
+  flex-wrap: wrap;
+}
+.filters input,
+.filters select {
+  font-size: 13px;
+  min-height: 40px;
+}
+@media (max-width: 800px) {
+  .search-field {
+    flex: 1 1 100%;
+  }
+  .filters > label:not(.search-field) {
+    flex: 1 1 calc(50% - 10px);
+  }
+  .filters > label select {
+    width: 100%;
+  }
+}
