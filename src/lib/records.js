@@ -16,9 +16,14 @@ export const organizationTypes = [
   "Trader / processor",
   "Specialty importer",
   "Specialty trader",
+  "Importer / distributor",
+  "Roaster",
+  "Chocolate maker",
+  "Cashew processor",
   "Other",
 ];
-export const channels = ["Email", "Contact form", "Other"];
+export const channels = ["Email", "WhatsApp", "Phone", "Contact form", "Other"];
+export const commodities = ["Cocoa", "Cashew", "Coffee", "Several"];
 const fields = [
   "id",
   "company",
@@ -28,6 +33,8 @@ const fields = [
   "website",
   "contactName",
   "contactEmail",
+  "contactPhone",
+  "commodity",
   "plannedChannel",
   "sourceNotes",
   "emailSubject",
@@ -179,6 +186,8 @@ export function summaryCsv(records) {
     "geography",
     "contactName",
     "contactEmail",
+    "contactPhone",
+    "commodity",
     "plannedChannel",
     "approval",
     "stage",
@@ -202,6 +211,29 @@ export function summaryCsv(records) {
         .join(","),
     );
   return "\uFEFF" + rows.join("\r\n");
+}
+
+/** Digits for a wa.me link, or "" when the number is too short to be real. @param {string} phone */
+export function whatsappNumber(phone) {
+  const digits = (phone || "").replace(/\D/g, "").replace(/^00/, "");
+  return digits.length >= 8 ? digits : "";
+}
+
+/**
+ * Work order for the list: overdue follow-ups first, then today's, then upcoming by date,
+ * then records with no date; ties by company name.
+ * @param {import('./types').Lead[]} records @param {string} today
+ */
+export function sortForWork(records, today) {
+  const rank = { overdue: 0, today: 1, upcoming: 2, none: 3 };
+  return [...records].sort((a, b) => {
+    const sa = followUpState(a, today);
+    const sb = followUpState(b, today);
+    if (rank[sa] !== rank[sb]) return rank[sa] - rank[sb];
+    if (sa !== "none" && a.nextFollowUp !== b.nextFollowUp)
+      return a.nextFollowUp < b.nextFollowUp ? -1 : 1;
+    return a.company.localeCompare(b.company);
+  });
 }
 
 /** @param {import('./types').Lead} record @param {string} today */

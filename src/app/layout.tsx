@@ -3,7 +3,7 @@ import "./globals.css";
 export const metadata: Metadata = {
   title: "BAOORE AgriTrade | Outreach workspace",
   description:
-    "Local-only, editable outreach CRM prototype. No sending or synchronization.",
+    "Private buyer outreach workspace for BAOORE AgriTrade.",
   robots: { index: false, follow: false },
   icons: { icon: "/icon.svg" },
 };

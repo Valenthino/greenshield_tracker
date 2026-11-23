@@ -13,17 +13,24 @@ import {
   approvals,
   blankLead,
   channels,
+  commodities,
   followUpState,
   organizationTypes,
   parseBackup,
   safeUrl,
+  sortForWork,
   stages,
   summaryCsv,
+  whatsappNumber,
 } from "@/lib/records";
+import { translate, type Lang } from "@/lib/i18n";
 
 type View = "all" | "review" | "due" | "replies";
 type Tab = "company" | "sources" | "draft" | "activity";
 type Session = "loading" | "setup" | "login" | "ready";
+type T = (text: string, values?: Record<string, string | number>) => string;
+const langKey = "baoore-crm-lang";
+
 function Icon({
   name,
 }: {
@@ -38,7 +45,9 @@ function Icon({
     | "refresh"
     | "lock"
     | "close"
-    | "check";
+    | "check"
+    | "chat"
+    | "copy";
 }) {
   const paths = {
     arrow: "M4 16 16 4M4 4h12v12",
@@ -52,6 +61,8 @@ function Icon({
     lock: "M4 9h12v9H4zM6 9V6a4 4 0 0 1 8 0v3",
     close: "M4 4l12 12M16 4 4 16",
     check: "M3 10l5 5 9-10",
+    chat: "M3 17l1.2-3.6A7 7 0 1 1 7 16.4Z",
+    copy: "M7 7h10v10H7zM3 13V3h10",
   };
   return (
     <svg className="icon" viewBox="0 0 20 20" aria-hidden="true">
@@ -59,7 +70,7 @@ function Icon({
     </svg>
   );
 }
-function Brand() {
+function Brand({ t }: { t: T }) {
   return (
     <div className="brand">
       <svg viewBox="0 0 34 44" aria-hidden="true">
@@ -67,7 +78,7 @@ function Brand() {
       </svg>
       <span>
         <strong>BAOORE AgriTrade</strong>
-        <small>OUTREACH WORKSPACE</small>
+        <small>{t("OUTREACH WORKSPACE")}</small>
       </span>
     </div>
   );
@@ -91,16 +102,16 @@ function Field({
     </label>
   );
 }
-function Status({ value }: { value: string }) {
+function Status({ value, t }: { value: string; t: T }) {
   return (
     <span
       className={`status status-${value.toLowerCase().replaceAll(" ", "-")}`}
     >
-      {value}
+      {t(value)}
     </span>
   );
 }
-function ExternalLink({ url, label }: { url: string; label?: string }) {
+function ExternalLink({ url, t }: { url: string; t: T }) {
   const href = safeUrl(url);
   return href ? (
     <a
@@ -110,24 +121,47 @@ function ExternalLink({ url, label }: { url: string; label?: string }) {
       rel="noopener noreferrer"
       referrerPolicy="no-referrer"
     >
-      {label || url}
+      {url}
       <Icon name="arrow" />
     </a>
   ) : (
-    <span className="invalid-url">{url || "No source added"}</span>
+    <span className="invalid-url">{url || t("No source added")}</span>
+  );
+}
+function LanguageSwitch({
+  lang,
+  setLang,
+  t,
+}: {
+  lang: Lang;
+  setLang: (lang: Lang) => void;
+  t: T;
+}) {
+  return (
+    <div className="lang-switch" role="group" aria-label={t("Language")}>
+      {(["fr", "en"] as const).map((value) => (
+        <button
+          key={value}
+          type="button"
+          lang={value}
+          aria-pressed={lang === value}
+          onClick={() => setLang(value)}
+        >
+          {value.toUpperCase()}
+        </button>
+      ))}
+    </div>
   );
 }
 function today() {
   const now = new Date();
   return `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, "0")}-${String(now.getDate()).padStart(2, "0")}`;
 }
-function shortDate(value: string) {
-  if (!value) return "Not set";
-  return new Date(value + "T12:00:00").toLocaleDateString(undefined, {
-    day: "numeric",
-    month: "short",
-    year: "numeric",
-  });
+/** Day first in both languages: 16/06/2026. */
+function shortDate(value: string, t: T) {
+  if (!value) return t("Not set");
+  const [year, month, day] = value.split("-");
+  return `${day}/${month}/${year}`;
 }
 function download(name: string, content: string, type: string) {
   const url = URL.createObjectURL(new Blob([content], { type }));
@@ -150,6 +184,8 @@ async function api(path: string, options: RequestInit = {}) {
 }
 
 export default function Crm() {
+  const [lang, setLangState] = useState<Lang>("en");
+  const t: T = (text, values) => translate(lang, text, values);
   const [session, setSession] = useState<Session>("loading");
   const [password, setPassword] = useState("");
   const [busy, setBusy] = useState(false);
@@ -160,8 +196,9 @@ export default function Crm() {
   const [notice, setNotice] = useState("");
   const [view, setView] = useState<View>("all");
   const [query, setQuery] = useState("");
-  const [typeFilter, setTypeFilter] = useState("All types");
-  const [stageFilter, setStageFilter] = useState("All stages");
+  const [typeFilter, setTypeFilter] = useState("");
+  const [stageFilter, setStageFilter] = useState("");
+  const [productFilter, setProductFilter] = useState("");
   const [draft, setDraft] = useState<Lead | null>(null);
   const [baseline, setBaseline] = useState("");
   const [revision, setRevision] = useState(0);
@@ -173,12 +210,41 @@ export default function Crm() {
   const dataDialog = useRef<HTMLDialogElement>(null);
   const importInput = useRef<HTMLInputElement>(null);
   const dirty = Boolean(draft && JSON.stringify(draft) !== baseline);
+  const message = (caught: unknown, fallback: string) =>
+    caught instanceof Error ? caught.message : t(fallback);
+
+  function setLang(value: Lang) {
+    setLangState(value);
+    try {
+      localStorage.setItem(langKey, value);
+    } catch {
+      /* Saving the choice is optional. */
+    }
+  }
+  useEffect(() => {
+    let saved: string | null = null;
+    try {
+      saved = localStorage.getItem(langKey);
+    } catch {
+      /* English stays the fallback. */
+    }
+    if (saved === "fr" || saved === "en") setLangState(saved);
+    else if (navigator.language?.toLowerCase().startsWith("fr"))
+      setLangState("fr");
+  }, []);
+  useEffect(() => {
+    document.documentElement.lang = lang;
+  }, [lang]);
+
   async function loadRecords() {
     const data = await api("/api/records/");
     setRecords(data.records);
     setRevisions(data.revisions);
     setLoadedAt(
-      new Date().toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" }),
+      new Date().toLocaleTimeString("fr-FR", {
+        hour: "2-digit",
+        minute: "2-digit",
+      }),
     );
   }
   useEffect(() => {
@@ -197,11 +263,7 @@ export default function Crm() {
         } else setSession("login");
       } catch (caught) {
         if (active) {
-          setError(
-            caught instanceof Error
-              ? caught.message
-              : "Cannot reach the server.",
-          );
+          setError(message(caught, "Cannot reach the server."));
           setSession("login");
         }
       }
@@ -209,6 +271,7 @@ export default function Crm() {
     return () => {
       active = false;
     };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
   useEffect(() => {
     if (draft && !editor.current?.open) editor.current?.showModal();
@@ -237,13 +300,13 @@ export default function Crm() {
       await loadRecords();
       setSession("ready");
     } catch (caught) {
-      setError(caught instanceof Error ? caught.message : "Sign-in failed.");
+      setError(message(caught, "Sign-in failed."));
     } finally {
       setBusy(false);
     }
   }
   async function signOut() {
-    if (dirty && !window.confirm("Discard your unsaved changes and sign out?"))
+    if (dirty && !window.confirm(t("Discard your unsaved changes and sign out?")))
       return;
     setBusy(true);
     try {
@@ -253,11 +316,7 @@ export default function Crm() {
       setSession("login");
       setNotice("");
     } catch (caught) {
-      setError(
-        caught instanceof Error
-          ? caught.message
-          : "Sign-out was not confirmed.",
-      );
+      setError(message(caught, "Sign-out was not confirmed."));
     } finally {
       setBusy(false);
     }
@@ -267,11 +326,9 @@ export default function Crm() {
     setError("");
     try {
       await loadRecords();
-      setNotice("Latest records loaded from the server.");
+      setNotice(t("Latest records loaded."));
     } catch (caught) {
-      setError(
-        caught instanceof Error ? caught.message : "Could not reload records.",
-      );
+      setError(message(caught, "Could not reload records."));
     } finally {
       setBusy(false);
     }
@@ -297,7 +354,7 @@ export default function Crm() {
   }
   function closeEditor() {
     if (busy) return;
-    if (dirty && !window.confirm("Discard the unsaved changes in this record?"))
+    if (dirty && !window.confirm(t("Discard the unsaved changes in this record?")))
       return;
     setDraft(null);
     setRecordError("");
@@ -323,7 +380,7 @@ export default function Crm() {
     event.preventDefault();
     if (!draft) return;
     if (!draft.company.trim()) {
-      setRecordError("Enter a company name.");
+      setRecordError(t("Enter a company name."));
       setTab("company");
       return;
     }
@@ -355,19 +412,20 @@ export default function Crm() {
         ...previous,
         [result.record.id]: result.revision,
       }));
-      setNotice(`${result.record.company} saved to the server datastore.`);
+      setNotice(t("{company} saved.", { company: result.record.company }));
       setDraft(null);
       setLoadedAt(
-        new Date().toLocaleTimeString([], {
+        new Date().toLocaleTimeString("fr-FR", {
           hour: "2-digit",
           minute: "2-digit",
         }),
       );
     } catch (caught) {
       setRecordError(
-        caught instanceof Error
-          ? caught.message
-          : "Save result is unconfirmed. Refresh the list before trying again.",
+        message(
+          caught,
+          "Save result is unconfirmed. Refresh the list before trying again.",
+        ),
       );
     } finally {
       setBusy(false);
@@ -377,7 +435,10 @@ export default function Crm() {
     if (!draft || isNew) return;
     if (
       !window.confirm(
-        `Delete ${draft.company} from the server datastore? This cannot be undone. Export a backup first if you need a copy.`,
+        t(
+          "Delete {company}? This cannot be undone. Export a backup first if you need a copy.",
+          { company: draft.company },
+        ),
       )
     )
       return;
@@ -391,14 +452,10 @@ export default function Crm() {
       setRecords((previous) =>
         previous.filter((record) => record.id !== draft.id),
       );
-      setNotice(`${draft.company} deleted from the datastore.`);
+      setNotice(t("{company} deleted.", { company: draft.company }));
       setDraft(null);
     } catch (caught) {
-      setRecordError(
-        caught instanceof Error
-          ? caught.message
-          : "Deletion was not confirmed.",
-      );
+      setRecordError(message(caught, "Deletion was not confirmed."));
     } finally {
       setBusy(false);
     }
@@ -407,13 +464,11 @@ export default function Crm() {
     if (!draft) return;
     try {
       await navigator.clipboard.writeText(
-        `Subject: ${draft.emailSubject}\n\n${draft.emailBody}`,
+        `${draft.emailSubject}\n\n${draft.emailBody}`,
       );
-      setCopyNotice("Copied to your clipboard. Nothing was sent.");
+      setCopyNotice(t("Copied. Paste it where you need it."));
     } catch {
-      setCopyNotice(
-        "Clipboard unavailable. Select and copy the text manually.",
-      );
+      setCopyNotice(t("Copy is not available. Select the text and copy it."));
     }
   }
   async function exportBackup() {
@@ -426,11 +481,9 @@ export default function Crm() {
         JSON.stringify(data, null, 2),
         "application/json",
       );
-      setNotice(
-        "JSON backup downloaded. Keep it in a private, backed-up location.",
-      );
+      setNotice(t("Backup downloaded. Keep it somewhere private."));
     } catch (caught) {
-      setError(caught instanceof Error ? caught.message : "Backup failed.");
+      setError(message(caught, "Backup failed."));
     } finally {
       setBusy(false);
     }
@@ -439,12 +492,15 @@ export default function Crm() {
     setError("");
     try {
       if (file.size > 4 * 1024 * 1024)
-        throw new Error("Choose a JSON backup smaller than 4 MB.");
+        throw new Error(t("Choose a JSON backup smaller than 4 MB."));
       const data = JSON.parse(await file.text());
       const incoming = parseBackup(data);
       if (
         !window.confirm(
-          `Import ${incoming.length} records? New IDs will be added. Existing IDs and your edits will be left unchanged.`,
+          t(
+            "Import {n} records? New companies are added. Existing ones and your edits stay as they are.",
+            { n: incoming.length },
+          ),
         )
       )
         return;
@@ -455,84 +511,87 @@ export default function Crm() {
       });
       await loadRecords();
       setNotice(
-        `${result.added} new records imported. ${result.skipped} existing IDs left unchanged.`,
+        t("{added} new records imported. {skipped} already in the list.", {
+          added: result.added,
+          skipped: result.skipped,
+        }),
       );
     } catch (caught) {
-      setError(caught instanceof Error ? caught.message : "Import failed.");
+      setError(message(caught, "Import failed."));
     } finally {
       setBusy(false);
       if (importInput.current) importInput.current.value = "";
     }
   }
   const date = today();
-  const dueCount = records.filter((record) =>
-    ["overdue", "today"].includes(followUpState(record, date)),
-  ).length;
-  const reviewCount = records.filter(
-    (record) =>
-      record.approval !== "Approved" &&
-      !["Closed", "Paused"].includes(record.stage),
-  ).length;
-  const replyCount = records.filter(
-    (record) => record.replyAt || record.stage === "Replied",
-  ).length;
+  const needsReview = (record: Lead) =>
+    record.approval !== "Approved" &&
+    !["Closed", "Paused"].includes(record.stage);
+  const isDue = (record: Lead) =>
+    ["overdue", "today"].includes(followUpState(record, date));
+  const hasReply = (record: Lead) =>
+    Boolean(record.replyAt || record.stage === "Replied");
+  const dueCount = records.filter(isDue).length;
+  const reviewCount = records.filter(needsReview).length;
+  const replyCount = records.filter(hasReply).length;
   const sentCount = records.filter((record) => record.sentAt).length;
   const filtered = useMemo(
     () =>
-      records
-        .filter((record) => {
+      sortForWork(
+        records.filter((record) => {
           const search =
-            `${record.company} ${record.contactName} ${record.contactEmail} ${record.geography} ${record.fit}`.toLowerCase();
+            `${record.company} ${record.contactName} ${record.contactEmail} ${record.contactPhone} ${record.geography} ${record.fit}`.toLowerCase();
           return (
             (!query || search.includes(query.toLowerCase())) &&
-            (typeFilter === "All types" ||
-              record.organizationType === typeFilter) &&
-            (stageFilter === "All stages" || record.stage === stageFilter) &&
+            (!typeFilter || record.organizationType === typeFilter) &&
+            (!stageFilter || record.stage === stageFilter) &&
+            (!productFilter || record.commodity === productFilter) &&
             (view === "all" ||
-              (view === "review" &&
-                record.approval !== "Approved" &&
-                !["Closed", "Paused"].includes(record.stage)) ||
-              (view === "due" &&
-                ["overdue", "today"].includes(followUpState(record, date))) ||
-              (view === "replies" &&
-                Boolean(record.replyAt || record.stage === "Replied")))
+              (view === "review" && needsReview(record)) ||
+              (view === "due" && isDue(record)) ||
+              (view === "replies" && hasReply(record)))
           );
-        })
-        .sort((a, b) => a.id.localeCompare(b.id)),
-    [records, query, typeFilter, stageFilter, view, date],
+        }),
+        date,
+      ),
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    [records, query, typeFilter, stageFilter, productFilter, view, date],
   );
+  const views: { id: View; icon: "grid" | "mail" | "clock" | "check"; label: string; count: number }[] = [
+    { id: "all", icon: "grid", label: t("Companies"), count: records.length },
+    { id: "review", icon: "mail", label: t("Draft review"), count: reviewCount },
+    { id: "due", icon: "clock", label: t("Follow-ups"), count: dueCount },
+    { id: "replies", icon: "check", label: t("Replies"), count: replyCount },
+  ];
 
   if (session !== "ready")
     return (
       <main className="login-page">
         <div className="login-brand">
-          <Brand />
+          <Brand t={t} />
+          <LanguageSwitch lang={lang} setLang={setLang} t={t} />
         </div>
         <section className="login-card">
-          <p className="eyebrow">PRIVATE WORKSPACE</p>
+          <p className="eyebrow">{t("PRIVATE WORKSPACE")}</p>
           <h1>
-            Your next
+            {t("Your next")}
             <br />
-            <em>conversation.</em>
+            <em>{t("conversation.")}</em>
           </h1>
-          <p>
-            One place for cocoa prospects, source notes and the follow-through.
-          </p>
+          <p>{t("One place for your buyers, their requirements and the follow-up.")}</p>
           {session === "loading" ? (
-            <p className="login-status">Checking your session…</p>
+            <p className="login-status">{t("Checking your session…")}</p>
           ) : session === "setup" ? (
             <div className="setup-note">
-              <h2>Set up access first.</h2>
+              <h2>{t("Set up access first.")}</h2>
               <p>
-                Run <code>npm run setup</code> in this project, save the
-                generated password, then restart the server.
+                {t("Run npm run setup on the server, save the password, then restart.")}
               </p>
-              <p>No prospect data is available before authentication.</p>
             </div>
           ) : (
             <form onSubmit={signIn}>
               <label className="field">
-                <span>Workspace password</span>
+                <span>{t("Password")}</span>
                 <input
                   type="password"
                   autoComplete="current-password"
@@ -548,136 +607,106 @@ export default function Crm() {
                 </p>
               )}
               <button className="button dark" disabled={busy}>
-                {busy ? "Signing in…" : "Open workspace"}
+                {busy ? t("Signing in…") : t("Open workspace")}
                 <Icon name="arrow" />
               </button>
             </form>
           )}
-          <div className="login-footer">
-            <Icon name="lock" />
-            <span>
-              Authenticated access · Server-side JSON datastore
-              <br />
-              No email sending or mailbox synchronization
-            </span>
-          </div>
         </section>
-        <p className="login-disclaimer">
-          Protected preview. Keep authentication, HTTPS and the persistent data
-          volume configured before network access.
-        </p>
       </main>
     );
+
+  const email = draft?.contactEmail.trim() || "";
+  const phone = whatsappNumber(draft?.contactPhone || "");
+  const mailHref = draft && email
+    ? `mailto:${encodeURIComponent(email)}?subject=${encodeURIComponent(draft.emailSubject)}&body=${encodeURIComponent(draft.emailBody)}`
+    : "";
+  const waHref = draft && phone
+    ? `https://wa.me/${phone}?text=${encodeURIComponent(draft.emailBody)}`
+    : "";
+  const emptyList = !records.length;
 
   return (
     <div className="app-shell">
       <aside className="sidebar">
-        <Brand />
-        <p className="nav-label">YOUR WORKSPACE</p>
-        <nav aria-label="Workspace views">
-          <button
-            className={view === "all" ? "selected" : ""}
-            onClick={() => setView("all")}
-          >
-            <Icon name="grid" />
-            Companies<span>{records.length}</span>
-          </button>
-          <button
-            className={view === "review" ? "selected" : ""}
-            onClick={() => setView("review")}
-          >
-            <Icon name="mail" />
-            Draft review<span>{reviewCount}</span>
-          </button>
-          <button
-            className={view === "due" ? "selected" : ""}
-            onClick={() => setView("due")}
-          >
-            <Icon name="clock" />
-            Follow-ups<span>{dueCount}</span>
-          </button>
-          <button
-            className={view === "replies" ? "selected" : ""}
-            onClick={() => setView("replies")}
-          >
-            <Icon name="check" />
-            Replies<span>{replyCount}</span>
-          </button>
+        <Brand t={t} />
+        <nav aria-label={t("Companies")}>
+          {views.map((item) => (
+            <button
+              key={item.id}
+              className={view === item.id ? "selected" : ""}
+              aria-current={view === item.id ? "page" : undefined}
+              onClick={() => setView(item.id)}
+            >
+              <Icon name={item.icon} />
+              {item.label}
+              <span>{item.count}</span>
+            </button>
+          ))}
         </nav>
         <div className="sidebar-bottom">
-          <div className="connection-state">
-            <span className="connection-dot" />
-            <strong>Server datastore</strong>
-            <p>Changes are saved to the server’s persistent JSON file.</p>
-          </div>
           <button
             className="sidebar-link"
             onClick={() => dataDialog.current?.showModal()}
           >
             <Icon name="download" />
-            Backup & workspace
+            {t("Backup & data")}
           </button>
           <button className="sidebar-link" onClick={signOut} disabled={busy}>
             <Icon name="lock" />
-            Sign out
+            {t("Sign out")}
           </button>
         </div>
       </aside>
       <main className="workspace">
         <div className="workspace-top">
-          <span>
-            <i /> AUTHENTICATED PREVIEW
-          </span>
-          <p>No mailbox connected. Nothing sends automatically.</p>
+          <LanguageSwitch lang={lang} setLang={setLang} t={t} />
           <button
             onClick={refresh}
             disabled={busy}
-            aria-label="Refresh records"
+            aria-label={t("Refresh records")}
+            title={t("Refresh records")}
           >
             <Icon name="refresh" />
           </button>
         </div>
         <header className="workspace-heading">
           <div>
-            <p className="eyebrow">BAOORE AGRITRADE / RELATIONSHIPS</p>
             <h1>
               {view === "all"
-                ? "The next conversation."
+                ? t("Who to talk to next.")
                 : view === "review"
-                  ? "Ready for a closer look."
+                  ? t("Drafts to review.")
                   : view === "due"
-                    ? "Keep the conversation going."
-                    : "The conversation continues."}
+                    ? t("Follow-ups due.")
+                    : t("Buyers who replied.")}
             </h1>
-            <p>
-              A considered approach to cocoa outreach, one company at a time.
-            </p>
           </div>
           <button className="button dark" onClick={add}>
             <Icon name="plus" />
-            Add company
+            {t("Add company")}
           </button>
         </header>
-        <section className="metrics" aria-label="Outreach summary">
+        <section className="metrics" aria-label={t("Companies")}>
           <button onClick={() => setView("all")}>
-            <span>Companies</span>
-            <strong>{records.length.toString().padStart(2, "0")}</strong>
-            <small>in your working list</small>
+            <span>{t("Companies")}</span>
+            <strong>{records.length}</strong>
+            <small>{t("in your list")}</small>
           </button>
           <button onClick={() => setView("review")}>
-            <span>Awaiting review</span>
-            <strong>{reviewCount.toString().padStart(2, "0")}</strong>
-            <small>approval still to record</small>
+            <span>{t("Awaiting review")}</span>
+            <strong>{reviewCount}</strong>
+            <small>{t("drafts not approved yet")}</small>
           </button>
           <button onClick={() => setView("due")}>
-            <span>Follow-ups due</span>
-            <strong>{dueCount.toString().padStart(2, "0")}</strong>
-            <small>based on dates you set</small>
+            <span>{t("Follow-ups due")}</span>
+            <strong>{dueCount}</strong>
+            <small>{t("today or overdue")}</small>
           </button>
           <div>
-            <span>Sent records</span>
-            <strong>{sentCount.toString().padStart(2, "0")}</strong>
-            <small>manually entered, not synced</small>
+            <span>{t("Emails sent")}</span>
+            <strong>{sentCount}</strong>
+            <small>{t("recorded by you")}</small>
           </div>
         </section>
         {error && (
@@ -691,7 +720,7 @@ export default function Crm() {
             {notice}
             <button
               onClick={() => setNotice("")}
-              aria-label="Dismiss notification"
+              aria-label={t("Dismiss notification")}
             >
               ×
             </button>
@@ -702,15 +731,18 @@ export default function Crm() {
             <div>
               <h2>
                 {view === "all"
-                  ? "Your companies"
+                  ? t("Your companies")
                   : view === "review"
-                    ? "Drafts to review"
+                    ? t("Drafts to review.")
                     : view === "due"
-                      ? "Follow-up list"
-                      : "Reply records"}
+                      ? t("Follow-up list")
+                      : t("Reply records")}
               </h2>
               <span>
-                {filtered.length} of {records.length} records
+                {t("{n} of {total} records", {
+                  n: filtered.length,
+                  total: records.length,
+                })}
               </span>
             </div>
             <button
@@ -718,7 +750,7 @@ export default function Crm() {
               onClick={exportBackup}
               disabled={busy}
             >
-              Export backup
+              {t("Export backup")}
               <Icon name="download" />
             </button>
           </div>
@@ -726,48 +758,67 @@ export default function Crm() {
             <label className="search-field">
               <Icon name="search" />
               <input
-                aria-label="Search companies"
-                placeholder="Search company, contact or market…"
+                type="search"
+                aria-label={t("Search companies")}
+                placeholder={t("Search company, contact or market…")}
                 value={query}
                 onChange={(event) => setQuery(event.target.value)}
               />
             </label>
             <label>
-              <span className="sr-only">Organization type</span>
+              <span className="sr-only">{t("Product")}</span>
               <select
-                value={typeFilter}
-                onChange={(event) => setTypeFilter(event.target.value)}
+                value={productFilter}
+                onChange={(event) => setProductFilter(event.target.value)}
               >
-                <option>All types</option>
-                {organizationTypes.map((value) => (
-                  <option key={value}>{value}</option>
+                <option value="">{t("All products")}</option>
+                {commodities.map((value) => (
+                  <option key={value} value={value}>
+                    {t(value)}
+                  </option>
                 ))}
               </select>
             </label>
             <label>
-              <span className="sr-only">Stage filter</span>
+              <span className="sr-only">{t("Organization type")}</span>
+              <select
+                value={typeFilter}
+                onChange={(event) => setTypeFilter(event.target.value)}
+              >
+                <option value="">{t("All types")}</option>
+                {organizationTypes.map((value) => (
+                  <option key={value} value={value}>
+                    {t(value)}
+                  </option>
+                ))}
+              </select>
+            </label>
+            <label>
+              <span className="sr-only">{t("Stage")}</span>
               <select
                 value={stageFilter}
                 onChange={(event) => setStageFilter(event.target.value)}
               >
-                <option>All stages</option>
+                <option value="">{t("All stages")}</option>
                 {stages.map((value) => (
-                  <option key={value}>{value}</option>
+                  <option key={value} value={value}>
+                    {t(value)}
+                  </option>
                 ))}
               </select>
             </label>
           </div>
           <div className="table-scroll">
-            <table>
+            <table className="record-table">
               <thead>
                 <tr>
-                  <th>Company / contact</th>
-                  <th>Organization</th>
-                  <th>Stage</th>
-                  <th>Approval</th>
-                  <th>Next follow-up</th>
+                  <th>{t("Company / contact")}</th>
+                  <th>{t("Organization")}</th>
+                  <th>{t("Stage")}</th>
+                  <th>{t("Approval")}</th>
+                  <th>{t("Next follow-up")}</th>
                   <th>
-                    <span className="sr-only">Open record</span>
+                    <span className="sr-only">{t("Open record")}</span>
                   </th>
                 </tr>
               </thead>
@@ -776,7 +827,7 @@ export default function Crm() {
                   const due = followUpState(record, date);
                   return (
                     <tr key={record.id} onClick={() => edit(record)}>
-                      <td>
+                      <td className="cell-company">
                         <button
                           className="company-button"
                           onClick={(event) => {
@@ -786,43 +837,44 @@ export default function Crm() {
                         >
                           <strong>{record.company}</strong>
                           <span>
-                            {record.contactEmail ||
-                              record.contactName ||
-                              "Contact details to add"}
+                            {record.contactName ||
+                              record.contactEmail ||
+                              record.contactPhone ||
+                              t("Contact details to add")}
                           </span>
                         </button>
                         {record.complianceGate && (
-                          <span className="gate-label">Review gate</span>
+                          <span className="gate-label">{t("Review gate")}</span>
                         )}
                       </td>
-                      <td>
+                      <td className="cell-type">
                         <span className="organization-type">
-                          {record.organizationType}
+                          {t(record.organizationType)}
+                          {record.commodity && ` · ${t(record.commodity)}`}
                         </span>
-                        <small className="record-id">{record.id}</small>
                       </td>
-                      <td>
-                        <Status value={record.stage} />
+                      <td className="cell-stage">
+                        <Status value={record.stage} t={t} />
                       </td>
-                      <td>
+                      <td className="cell-approval">
                         <span
                           className={`approval-label ${record.approval === "Approved" ? "approved" : ""}`}
                         >
-                          {record.approval}
+                          {t(record.approval)}
                         </span>
                       </td>
-                      <td>
+                      <td className="cell-date">
                         <span className={due === "overdue" ? "overdue" : ""}>
-                          {shortDate(record.nextFollowUp)}
+                          {shortDate(record.nextFollowUp, t)}
                         </span>
                         {due === "overdue" && (
-                          <small className="due-note">Overdue</small>
+                          <small className="due-note">{t("Overdue")}</small>
                         )}
                         {due === "today" && (
-                          <small className="due-note">Today</small>
+                          <small className="due-note">{t("Today")}</small>
                         )}
                       </td>
-                      <td>
+                      <td className="cell-arrow">
                         <span className="row-arrow">
                           <Icon name="arrow" />
                         </span>
@@ -834,44 +886,42 @@ export default function Crm() {
             </table>
             {!filtered.length && (
               <div className="empty-state">
-                <h3>No records in this view.</h3>
+                <h3>{emptyList ? t("No companies yet.") : t("No records in this view.")}</h3>
                 <p>
-                  {view === "due"
-                    ? "Set a next follow-up date in a company record when it is appropriate. No dates are assumed."
-                    : "Try another search or filter, or add a company."}
+                  {emptyList
+                    ? t("Add your first buyer, or import a backup from Backup & data.")
+                    : view === "due"
+                      ? t("Set a next follow-up date in a company record.")
+                      : t("Try another search or filter, or add a company.")}
                 </p>
-                <button
-                  className="text-button"
-                  onClick={() => {
-                    setView("all");
-                    setQuery("");
-                    setTypeFilter("All types");
-                    setStageFilter("All stages");
-                  }}
-                >
-                  Show all companies
-                  <Icon name="arrow" />
-                </button>
+                {emptyList ? (
+                  <button className="button dark" onClick={add}>
+                    <Icon name="plus" />
+                    {t("Add company")}
+                  </button>
+                ) : (
+                  <button
+                    className="text-button"
+                    onClick={() => {
+                      setView("all");
+                      setQuery("");
+                      setTypeFilter("");
+                      setStageFilter("");
+                      setProductFilter("");
+                    }}
+                  >
+                    {t("Show all companies")}
+                    <Icon name="arrow" />
+                  </button>
+                )}
               </div>
             )}
           </div>
           <div className="list-footnote">
-            <span>
-              Last loaded {loadedAt || "—"} · Use Refresh to see changes from
-              another session.
-            </span>
-            <span>Source notes remain research, not buyer acceptance.</span>
+            <span>{t("Last loaded {time}", { time: loadedAt || "—" })}</span>
           </div>
         </section>
-        <footer className="workspace-footer">
-          <span>BAOORE AgriTrade · Internal outreach workspace</span>
-          <button onClick={() => dataDialog.current?.showModal()}>
-            About data & access
-            <Icon name="arrow" />
-          </button>
-        </footer>
       </main>
-
       <dialog
         ref={editor}
         className="record-panel"
@@ -885,15 +935,15 @@ export default function Crm() {
             <header className="panel-heading">
               <div>
                 <p className="eyebrow">
-                  {isNew ? "NEW COMPANY" : draft.id + " / COMPANY RECORD"}
+                  {isNew ? t("NEW COMPANY") : t("COMPANY RECORD")}
                 </p>
-                <h2>{draft.company || "A new relationship."}</h2>
+                <h2>{draft.company || t("A new buyer.")}</h2>
               </div>
               <button
                 type="button"
                 className="icon-button"
                 onClick={closeEditor}
-                aria-label="Close record"
+                aria-label={t("Close record")}
               >
                 <Icon name="close" />
               </button>
@@ -901,7 +951,7 @@ export default function Crm() {
             <div
               className="panel-tabs"
               role="tablist"
-              aria-label="Record sections"
+              aria-label={t("Record sections")}
             >
               {(["company", "sources", "draft", "activity"] as const).map(
                 (value) => (
@@ -914,12 +964,12 @@ export default function Crm() {
                     onClick={() => setTab(value)}
                   >
                     {value === "company"
-                      ? "Company"
+                      ? t("Company")
                       : value === "sources"
-                        ? "Sources & fit"
+                        ? t("Sources & fit")
                         : value === "draft"
-                          ? "Email drafts"
-                          : "Activity"}
+                          ? t("Email drafts")
+                          : t("Activity")}
                   </button>
                 ),
               )}
@@ -927,141 +977,145 @@ export default function Crm() {
             <div className="panel-content">
               {draft.complianceGate && (
                 <div className="gate-warning">
-                  <strong>Outreach review gate</strong>
+                  <strong>{t("Point to check before contact")}</strong>
                   <p>{draft.complianceGate}</p>
                 </div>
               )}
               {tab === "company" && (
-                <>
-                  <div className="section-note">
-                    <h3>The right people, clearly identified.</h3>
-                    <p>
-                      Contact details and organization type are editable. A
-                      published address does not establish consent or a
-                      willingness to buy.
-                    </p>
-                  </div>
-                  <div className="field-grid">
-                    <Field label="Company" wide>
-                      <input
-                        value={draft.company}
-                        onChange={(event) =>
-                          update("company", event.target.value)
-                        }
-                        maxLength={180}
-                      />
-                    </Field>
-                    <Field label="Organization type">
-                      <select
-                        value={draft.organizationType}
-                        onChange={(event) =>
-                          update("organizationType", event.target.value)
-                        }
-                      >
-                        {organizationTypes.map((value) => (
-                          <option key={value}>{value}</option>
-                        ))}
-                      </select>
-                    </Field>
-                    <Field label="Planned channel">
-                      <select
-                        value={draft.plannedChannel}
-                        onChange={(event) =>
-                          update("plannedChannel", event.target.value)
-                        }
-                      >
-                        {channels.map((value) => (
-                          <option key={value}>{value}</option>
-                        ))}
-                      </select>
-                    </Field>
-                    <Field label="Contact name / team">
-                      <input
-                        value={draft.contactName}
-                        onChange={(event) =>
-                          update("contactName", event.target.value)
-                        }
-                      />
-                    </Field>
-                    <Field label="Contact email">
-                      <input
-                        type="email"
-                        value={draft.contactEmail}
-                        onChange={(event) =>
-                          update("contactEmail", event.target.value)
-                        }
-                      />
-                    </Field>
-                    <Field label="Company or contact page" wide>
-                      <input
-                        type="url"
-                        placeholder="https://…"
-                        value={draft.website}
-                        onChange={(event) =>
-                          update("website", event.target.value)
-                        }
-                      />
-                    </Field>
-                    <Field label="Market / geography" wide>
-                      <textarea
-                        rows={3}
-                        value={draft.geography}
-                        onChange={(event) =>
-                          update("geography", event.target.value)
-                        }
-                      />
-                    </Field>
-                    <Field
-                      label="Stage"
-                      hint="A manual record, not a connected mailbox status."
+                <div className="field-grid">
+                  <Field label={t("Company")} wide>
+                    <input
+                      value={draft.company}
+                      onChange={(event) => update("company", event.target.value)}
+                      maxLength={180}
+                      required
+                    />
+                  </Field>
+                  <Field label={t("Organization type")}>
+                    <select
+                      value={draft.organizationType}
+                      onChange={(event) =>
+                        update("organizationType", event.target.value)
+                      }
                     >
-                      <select
-                        value={draft.stage}
-                        onChange={(event) =>
-                          update("stage", event.target.value)
-                        }
-                      >
-                        {stages.map((value) => (
-                          <option key={value}>{value}</option>
-                        ))}
-                      </select>
-                    </Field>
-                    <Field
-                      label="Next follow-up date"
-                      hint="No reminders or messages are scheduled."
+                      {organizationTypes.map((value) => (
+                        <option key={value} value={value}>
+                          {t(value)}
+                        </option>
+                      ))}
+                    </select>
+                  </Field>
+                  <Field label={t("Main product")}>
+                    <select
+                      value={draft.commodity}
+                      onChange={(event) => update("commodity", event.target.value)}
                     >
-                      <input
-                        type="date"
-                        value={draft.nextFollowUp}
-                        onChange={(event) =>
-                          update("nextFollowUp", event.target.value)
-                        }
-                      />
-                    </Field>
-                    <Field label="Next action" wide>
-                      <textarea
-                        rows={3}
-                        value={draft.nextAction}
-                        onChange={(event) =>
-                          update("nextAction", event.target.value)
-                        }
-                      />
-                    </Field>
-                  </div>
-                </>
+                      <option value="">—</option>
+                      {commodities.map((value) => (
+                        <option key={value} value={value}>
+                          {t(value)}
+                        </option>
+                      ))}
+                    </select>
+                  </Field>
+                  <Field label={t("Contact name / team")}>
+                    <input
+                      value={draft.contactName}
+                      onChange={(event) =>
+                        update("contactName", event.target.value)
+                      }
+                    />
+                  </Field>
+                  <Field label={t("Planned channel")}>
+                    <select
+                      value={draft.plannedChannel}
+                      onChange={(event) =>
+                        update("plannedChannel", event.target.value)
+                      }
+                    >
+                      {channels.map((value) => (
+                        <option key={value} value={value}>
+                          {t(value)}
+                        </option>
+                      ))}
+                    </select>
+                  </Field>
+                  <Field label={t("Contact email")}>
+                    <input
+                      type="email"
+                      inputMode="email"
+                      value={draft.contactEmail}
+                      onChange={(event) =>
+                        update("contactEmail", event.target.value)
+                      }
+                    />
+                  </Field>
+                  <Field
+                    label={t("Contact phone / WhatsApp")}
+                    hint={t("With country code, e.g. +44 20 1234 5678")}
+                  >
+                    <input
+                      type="tel"
+                      inputMode="tel"
+                      value={draft.contactPhone}
+                      onChange={(event) =>
+                        update("contactPhone", event.target.value)
+                      }
+                    />
+                  </Field>
+                  <Field label={t("Stage")}>
+                    <select
+                      value={draft.stage}
+                      onChange={(event) => update("stage", event.target.value)}
+                    >
+                      {stages.map((value) => (
+                        <option key={value} value={value}>
+                          {t(value)}
+                        </option>
+                      ))}
+                    </select>
+                  </Field>
+                  <Field label={t("Next follow-up date")}>
+                    <input
+                      type="date"
+                      value={draft.nextFollowUp}
+                      onChange={(event) =>
+                        update("nextFollowUp", event.target.value)
+                      }
+                    />
+                  </Field>
+                  <Field label={t("Next action")} wide>
+                    <textarea
+                      rows={2}
+                      value={draft.nextAction}
+                      onChange={(event) =>
+                        update("nextAction", event.target.value)
+                      }
+                    />
+                  </Field>
+                  <Field label={t("Company or contact page")} wide>
+                    <input
+                      type="url"
+                      placeholder="https://…"
+                      value={draft.website}
+                      onChange={(event) => update("website", event.target.value)}
+                    />
+                  </Field>
+                  <Field label={t("Market / geography")} wide>
+                    <textarea
+                      rows={2}
+                      value={draft.geography}
+                      onChange={(event) =>
+                        update("geography", event.target.value)
+                      }
+                    />
+                  </Field>
+                </div>
               )}
               {tab === "sources" && (
                 <>
-                  <div className="section-note">
-                    <h3>Keep the evidence with the prospect.</h3>
-                    <p>
-                      These are source-backed screening leads, not confirmed
-                      buyers. Official source notes were prepared on 30 October
-                      2026 and have not been automatically rechecked.
-                    </p>
-                  </div>
                   <div className="field-grid">
-                    <Field label="Fit and caveats" wide>
+                    <Field label={t("Fit and caveats")} wide>
                       <textarea
                         rows={5}
                         value={draft.fit}
@@ -1069,8 +1123,8 @@ export default function Crm() {
                       />
                     </Field>
                     <Field
-                      label="Source URLs"
-                      hint="One URL per line. Only http/https links can be opened."
+                      label={t("Source URLs")}
+                      hint={t("One link per line.")}
                       wide
                     >
                       <textarea
@@ -1084,29 +1138,22 @@ export default function Crm() {
                   </div>
                   <div className="source-list">
                     {draft.sources.filter(Boolean).map((url, index) => (
-                      <ExternalLink key={index} url={url} />
+                      <ExternalLink key={index} url={url} t={t} />
                     ))}
                   </div>
                   <div className="field-grid">
-                    <Field
-                      label="What the sources establish — and do not establish"
-                      wide
-                    >
+                    <Field label={t("What the sources show")} wide>
                       <textarea
-                        rows={7}
+                        rows={6}
                         value={draft.sourceNotes}
                         onChange={(event) =>
                           update("sourceNotes", event.target.value)
                         }
                       />
                     </Field>
-                    <Field
-                      label="Outreach review gate"
-                      hint="Keep any legal/consent or classification gate visible until it is specifically resolved."
-                      wide
-                    >
+                    <Field label={t("Point to check before contact")} wide>
                       <textarea
-                        rows={4}
+                        rows={3}
                         value={draft.complianceGate}
                         onChange={(event) =>
                           update("complianceGate", event.target.value)
@@ -1118,16 +1165,8 @@ export default function Crm() {
               )}
               {tab === "draft" && (
                 <>
-                  <div className="section-note">
-                    <h3>A short, human introduction.</h3>
-                    <p>
-                      Call-first drafts, with no tonnage in the first approach.
-                      Editing an approved draft resets its approval. Nothing
-                      here sends an email.
-                    </p>
-                  </div>
                   <div className="field-grid">
-                    <Field label="Subject" wide>
+                    <Field label={t("Subject")} wide>
                       <input
                         value={draft.emailSubject}
                         onChange={(event) =>
@@ -1135,10 +1174,14 @@ export default function Crm() {
                         }
                       />
                     </Field>
-                    <Field label="First email" wide>
+                    <Field
+                      label={t("First email")}
+                      hint={t("Editing an approved draft sets it back to Not reviewed.")}
+                      wide
+                    >
                       <textarea
                         className="email-editor"
-                        rows={14}
+                        rows={12}
                         value={draft.emailBody}
                         onChange={(event) =>
                           update("emailBody", event.target.value)
@@ -1147,21 +1190,41 @@ export default function Crm() {
                     </Field>
                   </div>
                   <div className="draft-actions">
+                    {mailHref && (
+                      <a className="button dark" href={mailHref}>
+                        <Icon name="mail" />
+                        {t("Open in email")}
+                      </a>
+                    )}
+                    {waHref && (
+                      <a
+                        className="button whatsapp"
+                        href={waHref}
+                        target="_blank"
+                        rel="noopener noreferrer"
+                      >
+                        <Icon name="chat" />
+                        {t("Send on WhatsApp")}
+                      </a>
+                    )}
                     <button
                       type="button"
                       className="button outline"
                       onClick={copyDraft}
                       disabled={!draft.emailBody}
                     >
-                      Copy subject + email
-                      <Icon name="mail" />
+                      <Icon name="copy" />
+                      {t("Copy")}
                     </button>
                     <span role="status">
-                      {copyNotice || "Clipboard only. No email integration."}
+                      {copyNotice ||
+                        (!mailHref && !waHref
+                          ? t("Add an email or phone number on the Company tab to send from here.")
+                          : "")}
                     </span>
                   </div>
                   <div className="field-grid">
-                    <Field label="Optional follow-up draft" wide>
+                    <Field label={t("Follow-up draft")} wide>
                       <textarea
                         rows={5}
                         value={draft.followUpDraft}
@@ -1170,7 +1233,7 @@ export default function Crm() {
                         }
                       />
                     </Field>
-                    <Field label="Approval status">
+                    <Field label={t("Approval status")}>
                       <select
                         value={draft.approval}
                         onChange={(event) =>
@@ -1178,20 +1241,21 @@ export default function Crm() {
                         }
                       >
                         {approvals.map((value) => (
-                          <option key={value}>{value}</option>
+                          <option key={value} value={value}>
+                            {t(value)}
+                          </option>
                         ))}
                       </select>
                     </Field>
-                    <Field label="Approved by">
+                    <Field label={t("Approved by")}>
                       <input
                         value={draft.approvedBy}
                         onChange={(event) =>
                           update("approvedBy", event.target.value)
                         }
-                        placeholder="Leave blank until actually approved"
                       />
                     </Field>
-                    <Field label="Approval date">
+                    <Field label={t("Approval date")}>
                       <input
                         type="date"
                         value={draft.approvedAt}
@@ -1201,131 +1265,74 @@ export default function Crm() {
                       />
                     </Field>
                   </div>
-                  <p className="fine-print">
-                    Recording an approval is not an instruction to send. This
-                    application has no send capability.
-                  </p>
                 </>
               )}
               {tab === "activity" && (
-                <>
-                  <div className="section-note">
-                    <h3>Record what actually happened.</h3>
-                    <p>
-                      These fields are manual. Leave unknown dates and sender
-                      details blank. Saving a sent date does not send a message.
-                    </p>
-                  </div>
-                  <div className="field-grid">
-                    <Field label="Actual sender">
-                      <input
-                        type="email"
-                        value={draft.sender}
-                        onChange={(event) =>
-                          update("sender", event.target.value)
-                        }
-                        placeholder="Sender address actually used"
-                      />
-                    </Field>
-                    <Field label="Actual sent date">
-                      <input
-                        type="date"
-                        value={draft.sentAt}
-                        onChange={(event) =>
-                          update("sentAt", event.target.value)
-                        }
-                      />
-                    </Field>
-                    <Field label="Reply received date">
-                      <input
-                        type="date"
-                        value={draft.replyAt}
-                        onChange={(event) =>
-                          update("replyAt", event.target.value)
-                        }
-                      />
-                    </Field>
-                    <Field label="Stage">
-                      <select
-                        value={draft.stage}
-                        onChange={(event) =>
-                          update("stage", event.target.value)
-                        }
-                      >
-                        {stages.map((value) => (
-                          <option key={value}>{value}</option>
-                        ))}
-                      </select>
-                    </Field>
-                    <Field label="Reply / conversation summary" wide>
-                      <textarea
-                        rows={5}
-                        value={draft.replySummary}
-                        onChange={(event) =>
-                          update("replySummary", event.target.value)
-                        }
-                      />
-                    </Field>
-                    <Field
-                      label="Thread URL"
-                      hint="For your reference only. This app does not read or sync the thread."
-                      wide
-                    >
-                      <input
-                        type="url"
-                        value={draft.threadUrl}
-                        onChange={(event) =>
-                          update("threadUrl", event.target.value)
-                        }
-                      />
-                    </Field>
-                    <Field label="Next follow-up date">
-                      <input
-                        type="date"
-                        value={draft.nextFollowUp}
-                        onChange={(event) =>
-                          update("nextFollowUp", event.target.value)
-                        }
-                      />
-                    </Field>
-                    <Field label="Sample status">
-                      <input
-                        value={draft.sampleStatus}
-                        onChange={(event) =>
-                          update("sampleStatus", event.target.value)
-                        }
-                        placeholder="Leave blank if not discussed"
-                      />
-                    </Field>
-                    <Field label="Buyer requirements" wide>
-                      <textarea
-                        rows={4}
-                        value={draft.requirements}
-                        onChange={(event) =>
-                          update("requirements", event.target.value)
-                        }
-                      />
-                    </Field>
-                    <Field label="Next action" wide>
-                      <textarea
-                        rows={3}
-                        value={draft.nextAction}
-                        onChange={(event) =>
-                          update("nextAction", event.target.value)
-                        }
-                      />
-                    </Field>
-                    <Field label="Internal notes" wide>
-                      <textarea
-                        rows={7}
-                        value={draft.notes}
-                        onChange={(event) =>
-                          update("notes", event.target.value)
-                        }
-                      />
-                    </Field>
-                  </div>
-                </>
+                <div className="field-grid">
+                  <Field label={t("Date sent")}>
+                    <input
+                      type="date"
+                      value={draft.sentAt}
+                      onChange={(event) => update("sentAt", event.target.value)}
+                    />
+                  </Field>
+                  <Field label={t("Sent from")}>
+                    <input
+                      value={draft.sender}
+                      onChange={(event) => update("sender", event.target.value)}
+                      placeholder={t("Email address or number used")}
+                    />
+                  </Field>
+                  <Field label={t("Reply received")}>
+                    <input
+                      type="date"
+                      value={draft.replyAt}
+                      onChange={(event) => update("replyAt", event.target.value)}
+                    />
+                  </Field>
+                  <Field label={t("Sample status")}>
+                    <input
+                      value={draft.sampleStatus}
+                      onChange={(event) =>
+                        update("sampleStatus", event.target.value)
+                      }
+                    />
+                  </Field>
+                  <Field label={t("What they said")} wide>
+                    <textarea
+                      rows={4}
+                      value={draft.replySummary}
+                      onChange={(event) =>
+                        update("replySummary", event.target.value)
+                      }
+                    />
+                  </Field>
+                  <Field label={t("Buyer requirements")} wide>
+                    <textarea
+                      rows={4}
+                      value={draft.requirements}
+                      onChange={(event) =>
+                        update("requirements", event.target.value)
+                      }
+                    />
+                  </Field>
+                  <Field label={t("Conversation link")} wide>
+                    <input
+                      type="url"
+                      value={draft.threadUrl}
+                      onChange={(event) =>
+                        update("threadUrl", event.target.value)
+                      }
+                    />
+                  </Field>
+                  <Field label={t("Internal notes")} wide>
+                    <textarea
+                      rows={6}
+                      value={draft.notes}
+                      onChange={(event) => update("notes", event.target.value)}
+                    />
+                  </Field>
+                </div>
               )}
               {recordError && (
                 <p className="form-error" role="alert">
@@ -1337,10 +1344,10 @@ export default function Crm() {
               <div>
                 <span className={dirty ? "unsaved" : "saved"}>
                   {dirty
-                    ? "Unsaved changes"
+                    ? t("Unsaved changes")
                     : isNew
-                      ? "New record — not saved"
-                      : "Saved record · revision " + revision}
+                      ? t("New record, not saved")
+                      : t("Saved")}
                 </span>
                 {!isNew && (
                   <button
@@ -1349,7 +1356,7 @@ export default function Crm() {
                     onClick={remove}
                     disabled={busy}
                   >
-                    Delete record
+                    {t("Delete record")}
                   </button>
                 )}
               </div>
@@ -1360,10 +1367,10 @@ export default function Crm() {
                   onClick={closeEditor}
                   disabled={busy}
                 >
-                  Cancel
+                  {t("Cancel")}
                 </button>
                 <button className="button dark" type="submit" disabled={busy}>
-                  {busy ? "Saving…" : "Save record"}
+                  {busy ? t("Saving…") : t("Save record")}
                   <Icon name="check" />
                 </button>
               </div>
@@ -1376,54 +1383,24 @@ export default function Crm() {
         <button
           className="dialog-close"
           onClick={() => dataDialog.current?.close()}
-          aria-label="Close workspace information"
+          aria-label={t("Close")}
         >
           <Icon name="close" />
         </button>
-        <p className="eyebrow">DATA & ACCESS</p>
-        <h2>
-          A working record.
-          <br />
-          Not a sending tool.
-        </h2>
+        <p className="eyebrow">{t("BACKUP & DATA")}</p>
+        <h2>{t("Keep a copy of your list.")}</h2>
         <p>
-          Edits are stored in a JSON file on the application server, not in this
-          browser. The server must have a persistent data volume. Clearing
-          browser storage does not delete the records.
+          {t(
+            "Your records are saved on the server. Download a backup now and then, and keep it somewhere private.",
+          )}
         </p>
-        <div className="data-facts">
-          <div>
-            <strong>Protected access</strong>
-            <p>
-              Password authentication and server-side sessions. This preview has
-              one shared administrator identity, not separate user accounts or
-              permissions.
-            </p>
-          </div>
-          <div>
-            <strong>Persistent, with limits</strong>
-            <p>
-              Atomic file writes and revision checks protect normal editing in
-              one Node process. Run one instance only. A JSON file is not an
-              automatic backup or a multi-node database.
-            </p>
-          </div>
-          <div>
-            <strong>No automatic activity</strong>
-            <p>
-              No mailbox, calendar, reminders or sending service is connected.
-              Sent dates, replies, approvals and follow-ups are recorded
-              manually.
-            </p>
-          </div>
-        </div>
         <div className="backup-actions">
           <button
             className="button dark"
             onClick={exportBackup}
             disabled={busy}
           >
-            Download JSON backup
+            {t("Download JSON backup")}
             <Icon name="download" />
           </button>
           <button
@@ -1434,18 +1411,16 @@ export default function Crm() {
                 summaryCsv(records),
                 "text/csv",
               );
-              setNotice(
-                "CSV summary downloaded. Use JSON for a complete backup.",
-              );
+              setNotice(t("CSV summary downloaded. Use JSON for a complete backup."));
             }}
           >
-            Download CSV summary
+            {t("Download CSV summary")}
           </button>
           <button
             className="text-button"
             onClick={() => importInput.current?.click()}
           >
-            Import new records from a JSON backup
+            {t("Import new records from a JSON backup")}
             <Icon name="arrow" />
           </button>
           <input
@@ -1460,9 +1435,9 @@ export default function Crm() {
           />
         </div>
         <p className="fine-print">
-          Import adds new IDs only; it does not overwrite existing records. Keep
-          backups private. Use HTTPS and secure cookies before exposing the
-          preview beyond localhost.
+          {t(
+            "Import only adds companies that are not in the list yet. It never overwrites your edits.",
+          )}
         </p>
       </dialog>
     </div>
